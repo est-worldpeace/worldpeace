@@ -7,6 +7,7 @@ This keeps GET/PUT state consistent across requests without adding infra.
 from __future__ import annotations
 
 import json
+import random
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,21 +17,34 @@ DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "app_state.json"
 
 _KST = timezone(timedelta(hours=9))
 _WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
-_DEMO_SOLD = [72, 78, 91, 88, 70, 75, 58]
+_DEMO_SEED = 20260101
+_DEMO_DAYS = 30
+# index 0=월 ... 6=일. 금·토에 매출이 오르고 일요일은 휴무 수준으로 낮은 동네 빵집 패턴.
+_WEEKDAY_BASE = [72, 68, 70, 75, 88, 104, 42]
 
 _lock = threading.Lock()
 
 
 def _seed_sales_history() -> list[dict]:
     today = datetime.now(_KST).date()
+    rng = random.Random(_DEMO_SEED)
     records = []
-    for index, sold in enumerate(_DEMO_SOLD):
-        day_date = today + timedelta(days=index - 6)
+    for offset in range(_DEMO_DAYS - 1, -1, -1):
+        day_date = today - timedelta(days=offset)
+        weekday = day_date.weekday()
+        base = _WEEKDAY_BASE[weekday]
+        trend = (_DEMO_DAYS - 1 - offset) * 0.15  # 완만한 성장 추세
+        noise = rng.randint(-6, 6)
+        note = "주말" if weekday >= 5 else "평일"
+        if weekday == 5 and rng.random() < 0.25:
+            note = "행사"
+            base += 14
+        sold = max(0, round(base + trend + noise))
         records.append({
             "date": day_date.isoformat(),
-            "day": _WEEKDAY_KO[day_date.weekday()],
+            "day": _WEEKDAY_KO[weekday],
             "sold": sold,
-            "note": "주말" if index in (2, 3) else "평일",
+            "note": note,
         })
     return records
 

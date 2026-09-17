@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { predict, getStore, getProduct, getSales } from './api/client.js';
 import { Icon } from './components/Icon.jsx';
-import { Sidebar } from './components/Sidebar.jsx';
-import { Topbar } from './components/Topbar.jsx';
+import { Sidebar } from './layout/Sidebar.jsx';
+import { Splash } from './layout/Splash.jsx';
+import { Topbar } from './layout/Topbar.jsx';
 import { PlanPage } from './pages/PlanPage.jsx';
 import { SalesPage } from './pages/SalesPage.jsx';
 import { ProductPage } from './pages/ProductPage.jsx';
@@ -21,6 +22,7 @@ export default function App() {
   const [prediction, setPrediction] = useState(null);
   const [predictionError, setPredictionError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -58,13 +60,16 @@ export default function App() {
       .catch(error => setPredictionError(error.message));
   };
 
+  const dataReady = Boolean(initError) || Boolean(sales && store && product);
+
+  let body;
   if (initError) {
-    return <div className="app-shell"><div className="init-error">초기 데이터를 불러오지 못했습니다: {initError}<br/>FastAPI 서버(http://127.0.0.1:8000)가 실행 중인지 확인해주세요.</div></div>;
+    body = <div className="app-shell"><div className="init-error">초기 데이터를 불러오지 못했습니다: {initError}<br/>FastAPI 서버(http://127.0.0.1:8000)가 실행 중인지 확인해주세요.</div></div>;
+  } else if (!sales || !store || !product) {
+    body = <div className="app-shell"><div className="init-loading">불러오는 중...</div></div>;
+  } else {
+    body = <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales} onReset={handleResetSales}/>} {page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
   }
 
-  if (!sales || !store || !product) {
-    return <div className="app-shell"><div className="init-loading">불러오는 중...</div></div>;
-  }
-
-  return <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales} onReset={handleResetSales}/>} {page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
+  return <>{body}{showSplash && <Splash ready={dataReady} onDone={() => setShowSplash(false)}/>}</>;
 }

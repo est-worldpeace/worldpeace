@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon } from './Icon.jsx';
+import { Icon } from '../components/Icon.jsx';
 import { Brand } from './Brand.jsx';
 
 export function Sidebar({ page, onNavigate, storeName }) {
