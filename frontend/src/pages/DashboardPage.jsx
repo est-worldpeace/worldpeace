@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '../components/Icon.jsx';
 import { Metric } from '../components/Metric.jsx';
 import { RiskBadge } from '../components/RiskBadge.jsx';
 import { wasteRisk, savings, formatWon } from '../utils/planning.js';
@@ -19,15 +20,27 @@ function average(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function DashboardPage({ product, sales, prediction, predictionError, loading, backtest }) {
+function readTodaysPlan() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('geogikkaji-plan') || 'null');
+    if (!saved?.savedAt) return null;
+    const isToday = new Date(saved.savedAt).toDateString() === new Date().toDateString();
+    return isToday ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+export function DashboardPage({ product, sales, prediction, predictionError, loading, backtest, onNavigate }) {
   const productName = product?.name || '상품';
   const baseline = product?.default_plan_quantity ?? 100;
   const predicted = prediction ? Math.round(prediction.predicted_sales) : null;
   const recommended = prediction ? prediction.recommended_quantity : null;
-  const risk = prediction ? wasteRisk(baseline, prediction.predicted_sales) : null;
-  const saved = prediction ? savings(baseline, prediction.recommended_quantity, product?.unit_cost) : null;
-  const waste = prediction ? Math.max(0, prediction.recommended_quantity - prediction.predicted_sales) : null;
+  const risk = prediction ? wasteRisk(baseline, predicted) : null;
+  const saved = prediction ? savings(baseline, recommended, product?.unit_cost) : null;
+  const waste = prediction ? Math.max(0, recommended - predicted) : null;
   const greeting = greetingFor(new Date().getHours());
+  const todaysPlan = readTodaysPlan();
 
   const targetDate = prediction?.target_date;
   const weekdayIndex = targetDate ? new Date(`${targetDate}T00:00:00`).getDay() : null;
@@ -37,6 +50,13 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
   const mean28 = average(soldValues.slice(-28));
   const trendUp = mean7 !== null && mean28 !== null && mean7 > mean28 * 1.03;
   const trendDown = mean7 !== null && mean28 !== null && mean7 < mean28 * 0.97;
+  const trendDelta = mean7 !== null && mean28 !== null ? Math.abs(Math.round(mean7 - mean28)) : null;
+
+  const weekdayP50 = prediction ? Math.round(prediction.comparison.weekday.p50) : null;
+  const weekdayGap = weekdayP50 !== null && predicted !== null ? predicted - weekdayP50 : null;
+
+  const weekendAvg = average(sales.filter(row => row.day === '토' || row.day === '일').map(row => Number(row.sold || 0)));
+  const weekdayAvg = average(sales.filter(row => row.day !== '토' && row.day !== '일').map(row => Number(row.sold || 0)));
 
   const recent3 = average(soldValues.slice(-3));
   const prior3 = average(soldValues.slice(-6, -3));
@@ -65,6 +85,18 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
       </div>
       {risk && <RiskBadge level={risk.level}/>}
     </section>
+
+    {prediction && <div className="plan-cta">
+      {todaysPlan
+        ? <>
+            <span>오늘 생산계획을 <strong>{todaysPlan.finalQuantity}개</strong>로 저장했어요.</span>
+            <button className="outline-button" onClick={() => onNavigate?.('plan')}>생산계획 다시 보기</button>
+          </>
+        : <>
+            <span>아직 오늘 생산량을 결정하지 않았어요.</span>
+            <button className="primary-button" onClick={() => onNavigate?.('plan')}><Icon name="save" size={18}/>생산계획에서 결정하기</button>
+          </>}
+    </div>}
 
     <div className="content-grid">
     <section className="kpi-grid">
@@ -110,15 +142,22 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
       <div className="factor-grid">
         <div className="factor-card">
           <span className="section-kicker">요일 효과</span>
-          <p>{targetDate ? `${WEEKDAY_KO[weekdayIndex]}요일` : '내일'}엔 보통 <strong>{prediction ? Math.round(prediction.comparison.weekday.p50) : '-'}개</strong> 정도 팔렸어요.</p>
+          {targetDate ? <p>
+            {WEEKDAY_KO[weekdayIndex]}요일은 보통 <strong>{weekdayP50}개</strong> 정도 팔려요
+            {weekdayGap != null && weekdayGap !== 0 && `, 이번 예측(${predicted}개)은 그보다 ${Math.abs(weekdayGap)}개 ${weekdayGap > 0 ? '많아요' : '적어요'}`}.
+          </p> : <p>예측일이 정해지면 알려드려요.</p>}
         </div>
         <div className="factor-card">
           <span className="section-kicker">최근 판매 추세</span>
-          <p>{trendUp ? '최근 7일 평균이 지난 4주 평균보다 높아지는 추세예요.' : trendDown ? '최근 7일 평균이 지난 4주 평균보다 낮아지는 추세예요.' : '최근 판매량이 평소와 비슷한 수준을 유지하고 있어요.'}</p>
+          <p>{trendUp ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 늘었어요.` : trendDown ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 줄었어요.` : mean7 !== null ? `최근 7일 평균이 ${Math.round(mean7)}개로 평소와 비슷해요.` : '추세를 보려면 판매기록이 더 필요해요.'}</p>
         </div>
         <div className="factor-card">
           <span className="section-kicker">주말 여부</span>
-          <p>{targetDate ? (isWeekend ? '내일은 주말이라 판매량이 늘어나는 경향을 반영했어요.' : '내일은 평일이라 평일 판매 패턴을 반영했어요.') : '예측일이 정해지면 알려드려요.'}</p>
+          <p>{!targetDate ? '예측일이 정해지면 알려드려요.' : weekendAvg !== null && weekdayAvg !== null
+            ? (isWeekend
+              ? `내일은 주말이에요. 주말 평균(${Math.round(weekendAvg)}개)이 평일(${Math.round(weekdayAvg)}개)보다 많아서 반영했어요.`
+              : `내일은 평일이에요. 평일 평균(${Math.round(weekdayAvg)}개) 판매 패턴을 반영했어요.`)
+            : (isWeekend ? '내일은 주말이라 판매량이 늘어나는 경향을 반영했어요.' : '내일은 평일이라 평일 판매 패턴을 반영했어요.')}</p>
         </div>
       </div>
     </section>
