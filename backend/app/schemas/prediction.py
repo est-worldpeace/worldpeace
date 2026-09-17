@@ -48,3 +48,27 @@ class PredictionResponse(BaseModel):
     capacity_shortfall: float
     warnings: list[str]
     comparison: dict[str, ModelComparison]
+
+
+class BacktestRequest(BaseModel):
+    product_id: str = Field(min_length=1, max_length=120)
+    sales_history: list[SalesRecordInput] = Field(min_length=1, max_length=5000)
+    days: int = Field(default=14, ge=1, le=90)
+
+    @model_validator(mode="after")
+    def validate_history(self):
+        dates = [record.date for record in self.sales_history]
+        if len(set(dates)) != len(dates):
+            raise ValueError("같은 날짜의 판매기록이 중복되어 있습니다.")
+        return self
+
+
+class BacktestPoint(BaseModel):
+    date: date
+    actual: int
+    predicted: float
+
+
+class BacktestResponse(BaseModel):
+    product_id: str
+    points: list[BacktestPoint]

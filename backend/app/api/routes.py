@@ -1,12 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.bakery_model import ModelInputError, load_model_pack
-from app.schemas.prediction import PredictionRequest, PredictionResponse
+from app.schemas.prediction import (
+    BacktestRequest,
+    BacktestResponse,
+    PredictionRequest,
+    PredictionResponse,
+)
 from app.schemas.product import ProductInfo, ProductUpdate
 from app.schemas.sales import SalesHistoryResponse
 from app.schemas.store import StoreSettings
 from app.services import store_repository
-from app.services.inference import run_inference
+from app.services.inference import run_backtest, run_inference
 
 router = APIRouter()
 
@@ -56,3 +61,9 @@ def update_product(payload: ProductUpdate):
 def get_sales():
     records = store_repository.get_sales_history("croissant")
     return {"product_id": "croissant", "records": records}
+
+
+@router.post("/predict/backtest", response_model=BacktestResponse)
+def predict_backtest(payload: BacktestRequest):
+    points = run_backtest(payload)
+    return {"product_id": payload.product_id, "points": points}

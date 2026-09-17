@@ -10,6 +10,7 @@ class ProductInfo(BaseModel):
     storage: str
     shelf_life: str
     default_plan_quantity: int = Field(ge=0, le=100000)
+    unit_cost: int | None = Field(default=None, ge=0, le=1000000)
 
 
 class ProductUpdate(BaseModel):
@@ -18,3 +19,4 @@ class ProductUpdate(BaseModel):
     storage: str = Field(min_length=1, max_length=40)
     shelf_life: str = Field(min_length=1, max_length=40)
     default_plan_quantity: int = Field(ge=0, le=100000)
+    unit_cost: int | None = Field(default=None, ge=0, le=1000000)
