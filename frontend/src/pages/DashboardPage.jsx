@@ -24,9 +24,9 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
   const baseline = product?.default_plan_quantity ?? 100;
   const predicted = prediction ? Math.round(prediction.predicted_sales) : null;
   const recommended = prediction ? prediction.recommended_quantity : null;
-  const risk = prediction ? wasteRisk(baseline, prediction.predicted_sales) : null;
-  const saved = prediction ? savings(baseline, prediction.recommended_quantity, product?.unit_cost) : null;
-  const waste = prediction ? Math.max(0, prediction.recommended_quantity - prediction.predicted_sales) : null;
+  const risk = prediction ? wasteRisk(baseline, predicted) : null;
+  const saved = prediction ? savings(baseline, recommended, product?.unit_cost) : null;
+  const waste = prediction ? Math.max(0, recommended - predicted) : null;
   const greeting = greetingFor(new Date().getHours());
 
   const targetDate = prediction?.target_date;
