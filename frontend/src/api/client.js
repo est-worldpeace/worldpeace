@@ -7,14 +7,38 @@ async function request(path, options) {
   return data;
 }
 
+function requestJson(path, method, body) {
+  return request(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export function getHealth() {
   return request('/health');
 }
 
-export function predict(text) {
-  return request('/predict', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
+export function predict(payload) {
+  return requestJson('/predict', 'POST', payload);
+}
+
+export function getStore() {
+  return request('/store');
+}
+
+export function updateStore(payload) {
+  return requestJson('/store', 'PUT', payload);
+}
+
+export function getProduct() {
+  return request('/product');
+}
+
+export function updateProduct(payload) {
+  return requestJson('/product', 'PUT', payload);
+}
+
+export function getSales() {
+  return request('/sales');
 }
