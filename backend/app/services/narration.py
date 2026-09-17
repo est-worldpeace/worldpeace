@@ -5,17 +5,17 @@ figures it is given. If the API call fails or no key is configured, callers
 must fall back to the existing rule-based sentences in the frontend
 (DashboardPage.jsx) so a live demo never breaks on a network hiccup.
 
-TODO (whoever picks this up):
-1. `pip install anthropic` and add it to requirements.txt.
+Setup:
+1. Install the backend requirements.
 2. Set the ANTHROPIC_API_KEY environment variable (do not commit it).
-3. Uncomment the real API call below and remove the `return None`.
-4. Tune SYSTEM_PROMPT if the model still adds unrequested detail or wanders
-   in tone — that's expected to take a few iterations.
+3. Tune SYSTEM_PROMPT if the model still adds unrequested detail or wanders
+    in tone — that's expected to take a few iterations.
 """
 
 from __future__ import annotations
 
 import json
+import os
 
 from app.schemas.narration import NarrationFactors
 
@@ -41,16 +41,31 @@ def _build_user_prompt(factors: NarrationFactors) -> str:
 
 
 def generate_narration(factors: NarrationFactors) -> dict[str, str] | None:
-    try:
-        # import anthropic  # local import: app must run fine without the package installed
-        # client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
-        # message = client.messages.create(
-        #     model=MODEL,
-        #     max_tokens=300,
-        #     system=SYSTEM_PROMPT,
-        #     messages=[{"role": "user", "content": _build_user_prompt(factors)}],
-        # )
-        # return json.loads(message.content[0].text)
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
         return None
+
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=300,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": _build_user_prompt(factors)}],
+        )
+        content = message.content[0]
+        text = content.text if hasattr(content, "text") else content["text"]
+        result = json.loads(text)
+        if not isinstance(result, dict):
+            return None
+        response = {
+            key: result.get(key)
+            for key in ("weekday_effect", "recent_trend", "weekend_note")
+        }
+        if not all(isinstance(value, str) and value.strip() for value in response.values()):
+            return None
+        return response
     except Exception:
         return None
