@@ -11,10 +11,10 @@ export function getHealth() {
   return request('/health');
 }
 
-export function predict(text) {
+export function predict(payload) {
   return request('/predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(payload),
   });
 }

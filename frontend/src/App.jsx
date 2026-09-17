@@ -1,14 +1,15 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { predict } from './api/client.js';
 
-const DEMO_SALES = [
-  { date: '09.10', day: '목', sold: 72, note: '평일' },
-  { date: '09.11', day: '금', sold: 78, note: '평일' },
-  { date: '09.12', day: '토', sold: 91, note: '주말' },
-  { date: '09.13', day: '일', sold: 88, note: '주말' },
-  { date: '09.14', day: '월', sold: 70, note: '평일' },
-  { date: '09.15', day: '화', sold: 75, note: '평일' },
-  { date: '09.16', day: '수', sold: 58, note: '평일' },
-];
+const toIsoDate = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+const relativeDate = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return toIsoDate(date); };
+const displayDate = value => value?.replace(/^\d{4}-/, '').replace('-', '.');
+const TOMORROW = relativeDate(1);
+const DEMO_SALES = [72, 78, 91, 88, 70, 75, 58].map((sold, index) => {
+  const date = relativeDate(index - 6);
+  const day = new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'Asia/Seoul' }).format(new Date(`${date}T12:00:00+09:00`)).replace('요일', '');
+  return { date, day, sold, note: index === 2 || index === 3 ? '주말' : '평일' };
+});
 
 const pageMeta = {
   sales: ['데이터 입력', '판매기록', '날짜별 판매수량을 확인하거나 CSV 파일을 불러옵니다.'],
@@ -52,10 +53,11 @@ function Metric({ label, value, tone }) {
   return <div className={`metric ${tone}`}><span>{label}</span><strong>{value}<small>개</small></strong></div>;
 }
 
-function PlanPage({ sales, finalQuantity, setFinalQuantity, onSaved }) {
+function PlanPage({ sales, prediction, predictionError, loading, finalQuantity, setFinalQuantity, onSaved }) {
   const baseline = 100;
-  const predicted = Math.round(sales.reduce((sum, row) => sum + Number(row.sold || 0), 0) / Math.max(sales.length, 1));
-  const adjusted = Math.ceil(predicted / 10) * 10;
+  const fallback = Math.round(sales.reduce((sum, row) => sum + Number(row.sold || 0), 0) / Math.max(sales.length, 1));
+  const predicted = prediction ? Math.round(prediction.predicted_sales) : fallback;
+  const adjusted = prediction ? prediction.recommended_quantity : Math.ceil(predicted / 10) * 10;
   const change = adjusted - baseline;
   const chartValues = [{ label: '기존 계획', value: baseline }, { label: '예상 판매량', value: predicted }, { label: '조정안', value: adjusted }];
   const changeQuantity = amount => setFinalQuantity(value => Math.max(10, Math.min(200, value + amount)));
@@ -63,7 +65,7 @@ function PlanPage({ sales, finalQuantity, setFinalQuantity, onSaved }) {
     <article className="panel chart-panel"><div className="product-line"><h2>크루아상</h2><span>내일은 몇 개를 만들까요?</span></div><QuantityBars values={chartValues}/></article>
     <div className="decision-column"><section className="metric-grid"><Metric label="기존 계획" value={baseline} tone="sage"/><Metric label="예상 판매량" value={predicted} tone="oat"/><Metric label="조정안" value={adjusted} tone="clay"/><Metric label="변경 수량" value={change > 0 ? `+${change}` : change} tone="mint"/></section><section className="panel quantity-panel"><div className="quantity-title"><h3>최종 생산량</h3><span>생산 단위 10개</span></div><div className="stepper"><button onClick={() => changeQuantity(-10)} aria-label="10개 줄이기">−</button><strong>{finalQuantity}<small>개</small></strong><button onClick={() => changeQuantity(10)} aria-label="10개 늘리기">＋</button></div><p>최종 수량은 점주가 결정합니다.</p></section></div>
     <aside className="panel product-card"><div className="croissant-art" aria-label="크루아상 일러스트"><span>🥐</span></div><h2>크루아상</h2><p>매일 구워내는<br/>우리 가게의 시그니처</p><dl><div><dt>생산 단위</dt><dd>10개</dd></div><div><dt>보관 방법</dt><dd>상온</dd></div><div><dt>판매 기한</dt><dd>당일</dd></div></dl><blockquote>“ 좋은 빵이<br/>좋은 하루를 만듭니다. ”</blockquote></aside>
-    <div className="estimate-note"><span className="info-mark">i</span><div><strong>예상 판매량은 과거 판매기록을 바탕으로 한 추정치입니다.</strong><p>현재 MVP에서는 최근 7일 평균을 사용하며, 실제 판매량과 다를 수 있습니다.</p></div></div><button className="save-plan" onClick={() => onSaved({ baseline, predicted, adjusted, finalQuantity })}><Icon name="save" size={25}/><span>계획 저장</span><b>→</b></button>
+    <div className="estimate-note"><span className="info-mark">i</span><div><strong>{loading ? '최종 결합 모델을 계산하고 있습니다.' : prediction ? `최종 결합 모델 · ${prediction.mode === 'research' ? '연구 모델' : '요일 기준 대체'}` : '모델 API 연결이 필요합니다.'}</strong><p>{prediction ? `P75 ${prediction.p75.toFixed(1)}개 · 기록 ${prediction.history_count}일${prediction.warnings?.length ? ` · ${prediction.warnings[0]}` : ''}` : predictionError || 'FastAPI 서버를 실행하면 실제 모델 결과로 교체됩니다.'}</p></div></div><button className="save-plan" onClick={() => onSaved({ baseline, predicted, adjusted, finalQuantity, model: prediction?.model || 'fallback' })}><Icon name="save" size={25}/><span>계획 저장</span><b>→</b></button>
   </section></>;
 }
 
@@ -72,7 +74,7 @@ function SalesPage({ sales, setSales }) {
   const average = Math.round(sales.reduce((sum, row) => sum + Number(row.sold || 0), 0) / Math.max(sales.length, 1));
   const max = Math.max(...sales.map(row => Number(row.sold || 0)));
   const handleFile = async event => { const file = event.target.files?.[0]; if (!file) return; const text = await file.text(); const parsed = text.trim().split(/\r?\n/).slice(1).map(line => { const [date, day, sold, note = '업로드'] = line.split(',').map(cell => cell.trim()); return { date, day, sold: Number(sold), note }; }).filter(row => row.date && Number.isFinite(row.sold)); if (parsed.length) setSales(parsed.slice(-30)); event.target.value = ''; };
-  return <><PageHeading page="sales"/><section className="content-grid sales-layout"><article className="panel upload-panel"><span className="section-kicker">CSV 가져오기</span><h2>판매기록을 추가하세요</h2><p>첫 행은 <code>날짜,요일,판매수량,메모</code> 형식을 사용합니다. 날짜와 판매수량은 필수입니다.</p><input ref={inputRef} type="file" accept=".csv,text/csv" onChange={handleFile} hidden/><button className="outline-button" onClick={() => inputRef.current?.click()}><Icon name="upload"/>CSV 파일 선택</button><button className="text-button" onClick={() => setSales(DEMO_SALES)}>예시 데이터로 되돌리기</button></article><div className="summary-stack"><Metric label="최근 평균 판매량" value={average} tone="sage"/><Metric label="최고 판매량" value={max} tone="oat"/></div><article className="panel table-panel"><div className="table-title"><div><span className="section-kicker">최근 기록</span><h2>크루아상 판매수량</h2></div><span>{sales.length}일</span></div><div className="data-table" role="table"><div className="table-row header" role="row"><span>날짜</span><span>요일</span><span>판매수량</span><span>구분</span></div>{sales.map((row, index) => <div className="table-row" role="row" key={`${row.date}-${index}`}><span>{row.date}</span><span>{row.day}</span><strong>{row.sold}개</strong><span className="pill">{row.note}</span></div>)}</div></article></section></>;
+  return <><PageHeading page="sales"/><section className="content-grid sales-layout"><article className="panel upload-panel"><span className="section-kicker">CSV 가져오기</span><h2>판매기록을 추가하세요</h2><p>첫 행은 <code>날짜,요일,판매수량,메모</code> 형식을 사용합니다. 날짜는 YYYY-MM-DD 형식입니다.</p><input ref={inputRef} type="file" accept=".csv,text/csv" onChange={handleFile} hidden/><button className="outline-button" onClick={() => inputRef.current?.click()}><Icon name="upload"/>CSV 파일 선택</button><button className="text-button" onClick={() => setSales(DEMO_SALES)}>예시 데이터로 되돌리기</button></article><div className="summary-stack"><Metric label="최근 평균 판매량" value={average} tone="sage"/><Metric label="최고 판매량" value={max} tone="oat"/></div><article className="panel table-panel"><div className="table-title"><div><span className="section-kicker">최근 기록</span><h2>크루아상 판매수량</h2></div><span>{sales.length}일</span></div><div className="data-table" role="table"><div className="table-row header" role="row"><span>날짜</span><span>요일</span><span>판매수량</span><span>구분</span></div>{sales.map((row, index) => <div className="table-row" role="row" key={`${row.date}-${index}`}><span>{displayDate(row.date)}</span><span>{row.day}</span><strong>{row.sold}개</strong><span className="pill">{row.note}</span></div>)}</div></article></section></>;
 }
 
 function ProductPage() {
@@ -87,7 +89,15 @@ function SettingsPage() {
 function PageHeading({ page }) { const [eyebrow, title, description] = pageMeta[page]; return <section className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div></section>; }
 
 export default function App() {
-  const [page, setPage] = useState('plan'); const [sales, setSales] = useState(DEMO_SALES); const initialSaved = useMemo(() => Number(localStorage.getItem('geogikkaji-final')) || 90, []); const [finalQuantity, setFinalQuantity] = useState(initialSaved); const [toast, setToast] = useState('');
+  const [page, setPage] = useState('plan'); const [sales, setSales] = useState(DEMO_SALES); const initialSaved = useMemo(() => Number(localStorage.getItem('geogikkaji-final')) || 90, []); const [finalQuantity, setFinalQuantity] = useState(initialSaved); const [toast, setToast] = useState(''); const [prediction, setPrediction] = useState(null); const [predictionError, setPredictionError] = useState(''); const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true; setLoading(true); setPredictionError('');
+    predict({ product_id: 'croissant', target_date: TOMORROW, sales_history: sales.map(row => ({ date: row.date, sales: Number(row.sold), stockout: false })), inventory: 0, reservations: 0, batch_size: 10, capacity: 200 })
+      .then(result => { if (active) { setPrediction(result); setFinalQuantity(result.recommended_quantity); } })
+      .catch(error => { if (active) { setPrediction(null); setPredictionError(error.message); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [sales]);
   const handleSaved = plan => { localStorage.setItem('geogikkaji-final', String(plan.finalQuantity)); localStorage.setItem('geogikkaji-plan', JSON.stringify({ ...plan, savedAt: new Date().toISOString() })); setToast(`${plan.finalQuantity}개 생산계획을 저장했습니다.`); window.setTimeout(() => setToast(''), 2600); };
-  return <div className="app-shell"><Sidebar page={page} onNavigate={setPage}/><div className="workspace"><Topbar/><main className="main-content">{page === 'plan' && <PlanPage sales={sales} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales}/>} {page === 'product' && <ProductPage/>}{page === 'settings' && <SettingsPage/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
+  return <div className="app-shell"><Sidebar page={page} onNavigate={setPage}/><div className="workspace"><Topbar/><main className="main-content">{page === 'plan' && <PlanPage sales={sales} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales}/>} {page === 'product' && <ProductPage/>}{page === 'settings' && <SettingsPage/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
 }
