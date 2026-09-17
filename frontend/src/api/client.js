@@ -42,3 +42,7 @@ export function updateProduct(payload) {
 export function getSales() {
   return request('/sales');
 }
+
+export function predictBacktest(payload) {
+  return requestJson('/predict/backtest', 'POST', payload);
+}
