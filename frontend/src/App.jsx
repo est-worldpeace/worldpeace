@@ -58,6 +58,14 @@ export default function App() {
     return () => { active = false; };
   }, [sales, product]);
 
+  const updateSales = records => {
+    // New sales data invalidates any plan saved against the old data, so today's
+    // dashboard/plan screens don't keep showing a decision made for different numbers.
+    localStorage.removeItem('geogikkaji-final');
+    localStorage.removeItem('geogikkaji-plan');
+    setSales(records);
+  };
+
   const handleSaved = plan => {
     localStorage.setItem('geogikkaji-final', String(plan.finalQuantity));
     localStorage.setItem('geogikkaji-plan', JSON.stringify({ ...plan, savedAt: new Date().toISOString() }));
@@ -73,9 +81,9 @@ export default function App() {
   } else if (!store || !product) {
     body = <div className="app-shell"><div className="init-loading">불러오는 중...</div></div>;
   } else if (!sales) {
-    body = <Onboarding productName={product.name} onImported={setSales}/>;
+    body = <Onboarding productName={product.name} onImported={updateSales}/>;
   } else {
-    body = <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'dashboard' && <DashboardPage product={product} sales={sales} prediction={prediction} predictionError={predictionError} loading={loading} backtest={backtest}/>}{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales} product={product} onNavigate={setPage}/>}{page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
+    body = <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'dashboard' && <DashboardPage product={product} sales={sales} prediction={prediction} predictionError={predictionError} loading={loading} backtest={backtest} onNavigate={setPage}/>}{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={updateSales} product={product} onNavigate={setPage}/>}{page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
   }
 
   return <>{body}{showSplash && <Splash ready={dataReady} onDone={() => setShowSplash(false)}/>}</>;

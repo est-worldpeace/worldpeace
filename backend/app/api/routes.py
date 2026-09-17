@@ -7,11 +7,13 @@ from app.schemas.prediction import (
     PredictionRequest,
     PredictionResponse,
 )
+from app.schemas.narration import NarrationFactors, NarrationResponse
 from app.schemas.product import ProductInfo, ProductUpdate
 from app.schemas.sales import SalesHistoryResponse
 from app.schemas.store import StoreSettings
 from app.services import store_repository
 from app.services.inference import run_backtest, run_inference
+from app.services.narration import generate_narration
 
 router = APIRouter()
 
@@ -67,3 +69,14 @@ def get_sales():
 def predict_backtest(payload: BacktestRequest):
     points = run_backtest(payload)
     return {"product_id": payload.product_id, "points": points}
+
+
+@router.post("/explain")
+def explain(payload: NarrationFactors):
+    """Returns LLM-narrated factor text, or null fields if no LLM is configured
+    yet / the call failed — the frontend must already fall back to its own
+    rule-based sentences in that case, so this endpoint is safe to call today."""
+    result = generate_narration(payload)
+    if result is None:
+        return {"weekday_effect": None, "recent_trend": None, "weekend_note": None}
+    return NarrationResponse.model_validate(result)
