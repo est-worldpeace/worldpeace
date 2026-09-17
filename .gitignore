@@ -1,5 +1,6 @@
 frontend/node_modules/
 frontend/dist/
+/node_modules/
 .venv/
 backend/app/data/app_state.json
 __pycache__/
