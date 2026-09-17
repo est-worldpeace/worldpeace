@@ -59,6 +59,7 @@ def _default_state() -> dict:
             "storage": "상온",
             "shelf_life": "당일",
             "default_plan_quantity": 100,
+            "unit_cost": None,
         },
         "sales_history": {"croissant": _seed_sales_history()},
     }

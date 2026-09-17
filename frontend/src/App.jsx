@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { predict, getStore, getProduct, getSales } from './api/client.js';
+import { predict, predictBacktest, getStore, getProduct, getSales } from './api/client.js';
 import { Icon } from './components/Icon.jsx';
 import { Sidebar } from './layout/Sidebar.jsx';
 import { Splash } from './layout/Splash.jsx';
 import { Topbar } from './layout/Topbar.jsx';
+import { DashboardPage } from './pages/DashboardPage.jsx';
 import { PlanPage } from './pages/PlanPage.jsx';
 import { SalesPage } from './pages/SalesPage.jsx';
 import { ProductPage } from './pages/ProductPage.jsx';
@@ -11,7 +12,7 @@ import { SettingsPage } from './pages/SettingsPage.jsx';
 import { TOMORROW } from './utils/date.js';
 
 export default function App() {
-  const [page, setPage] = useState('plan');
+  const [page, setPage] = useState('dashboard');
   const [store, setStore] = useState(null);
   const [product, setProduct] = useState(null);
   const [sales, setSales] = useState(null);
@@ -22,6 +23,7 @@ export default function App() {
   const [prediction, setPrediction] = useState(null);
   const [predictionError, setPredictionError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [backtest, setBacktest] = useState([]);
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -47,17 +49,20 @@ export default function App() {
     return () => { active = false; };
   }, [sales, product]);
 
+  useEffect(() => {
+    if (!sales || !product) return;
+    let active = true;
+    predictBacktest({ product_id: product.product_id, sales_history: sales.map(row => ({ date: row.date, sales: Number(row.sold), stockout: false })), days: 14 })
+      .then(result => { if (active) setBacktest(result.points); })
+      .catch(() => { if (active) setBacktest([]); });
+    return () => { active = false; };
+  }, [sales, product]);
+
   const handleSaved = plan => {
     localStorage.setItem('geogikkaji-final', String(plan.finalQuantity));
     localStorage.setItem('geogikkaji-plan', JSON.stringify({ ...plan, savedAt: new Date().toISOString() }));
     setToast(`${plan.finalQuantity}개 생산계획을 저장했습니다.`);
     window.setTimeout(() => setToast(''), 2600);
-  };
-
-  const handleResetSales = () => {
-    getSales()
-      .then(result => setSales(result.records))
-      .catch(error => setPredictionError(error.message));
   };
 
   const dataReady = Boolean(initError) || Boolean(sales && store && product);
@@ -68,7 +73,7 @@ export default function App() {
   } else if (!sales || !store || !product) {
     body = <div className="app-shell"><div className="init-loading">불러오는 중...</div></div>;
   } else {
-    body = <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales} onReset={handleResetSales}/>} {page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
+    body = <div className="app-shell"><Sidebar page={page} onNavigate={setPage} storeName={store.name}/><div className="workspace"><Topbar storeName={store.name}/><main className="main-content">{page === 'dashboard' && <DashboardPage product={product} sales={sales} prediction={prediction} predictionError={predictionError} loading={loading} backtest={backtest}/>}{page === 'plan' && <PlanPage sales={sales} product={product} prediction={prediction} predictionError={predictionError} loading={loading} finalQuantity={finalQuantity} setFinalQuantity={setFinalQuantity} onSaved={handleSaved}/>} {page === 'sales' && <SalesPage sales={sales} setSales={setSales} product={product} onNavigate={setPage}/>}{page === 'product' && <ProductPage product={product} onProductUpdated={setProduct}/>}{page === 'settings' && <SettingsPage store={store} onStoreUpdated={setStore}/>}</main></div>{toast && <div className="toast"><Icon name="check" size={20}/>{toast}</div>}</div>;
   }
 
   return <>{body}{showSplash && <Splash ready={dataReady} onDone={() => setShowSplash(false)}/>}</>;
