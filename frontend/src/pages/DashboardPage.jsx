@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { explainFactors } from '../api/client.js';
 import { Icon } from '../components/Icon.jsx';
 import { Metric } from '../components/Metric.jsx';
 import { savings, formatWon } from '../utils/planning.js';
@@ -55,6 +56,44 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
 
   const weekendAvg = average(sales.filter(row => row.day === '토' || row.day === '일').map(row => Number(row.sold || 0)));
   const weekdayAvg = average(sales.filter(row => row.day !== '토' && row.day !== '일').map(row => Number(row.sold || 0)));
+  const weekendHigher = weekendAvg !== null && weekdayAvg !== null && weekendAvg > weekdayAvg;
+
+  let weekendNote = '예측일이 정해지면 알려드려요.';
+  if (targetDate) {
+    if (weekendAvg !== null && weekdayAvg !== null) {
+      const wkEnd = Math.round(weekendAvg);
+      const wkDay = Math.round(weekdayAvg);
+      if (isWeekend && weekendHigher) weekendNote = `내일은 주말이에요. 주말 평균(${wkEnd}개)이 평일(${wkDay}개)보다 많아서 반영했어요.`;
+      else if (isWeekend) weekendNote = `내일은 주말이지만, 최근 기록에서는 주말 평균(${wkEnd}개)이 평일(${wkDay}개)보다 낮았어요.`;
+      else if (!weekendHigher) weekendNote = `내일은 평일이에요. 평일 평균(${wkDay}개) 판매 패턴을 반영했어요.`;
+      else weekendNote = `내일은 평일이에요. 주말 평균(${wkEnd}개)보다는 낮은 평일 평균(${wkDay}개) 패턴을 반영했어요.`;
+    } else {
+      weekendNote = isWeekend ? '내일은 주말이라 판매량이 늘어나는 경향을 반영했어요.' : '내일은 평일이라 평일 판매 패턴을 반영했어요.';
+    }
+  }
+
+  const [narration, setNarration] = useState(null);
+  useEffect(() => {
+    if (!prediction || !targetDate) { setNarration(null); return; }
+    let active = true;
+    explainFactors({
+      target_weekday: WEEKDAY_KO[weekdayIndex],
+      predicted_sales: prediction.predicted_sales,
+      weekday_p50: prediction.comparison.weekday.p50,
+      mean7,
+      mean28,
+      weekend_avg: weekendAvg,
+      weekday_avg: weekdayAvg,
+      is_weekend: isWeekend,
+    })
+      .then(result => {
+        if (!active) return;
+        const ready = result?.weekday_effect && result?.recent_trend && result?.weekend_note;
+        setNarration(ready ? result : null);
+      })
+      .catch(() => { if (active) setNarration(null); });
+    return () => { active = false; };
+  }, [targetDate, weekdayIndex, predicted, weekdayP50, mean7, mean28, weekendAvg, weekdayAvg, isWeekend]);
 
   const recent3 = average(soldValues.slice(-3));
   const prior3 = average(soldValues.slice(-6, -3));
@@ -135,26 +174,22 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
     </section>
 
     <section className="panel factor-panel">
-      <div className="table-title"><div><span className="section-kicker">예측에 반영된 요인</span><h2>왜 이 숫자가 나왔을까요?</h2></div></div>
+      <div className="table-title"><div><span className="section-kicker">예측에 반영된 요인</span><h2>왜 이 숫자가 나왔을까요?</h2></div>{narration && <span className="pill pill-ready">✨ AI 설명</span>}</div>
       <div className="factor-grid">
         <div className="factor-card">
           <span className="section-kicker">요일 효과</span>
-          {targetDate ? <p>
+          {narration ? <p>{narration.weekday_effect}</p> : targetDate ? <p>
             {WEEKDAY_KO[weekdayIndex]}요일은 보통 <strong>{weekdayP50}개</strong> 정도 팔려요
             {weekdayGap != null && weekdayGap !== 0 && `, 이번 예측(${predicted}개)은 그보다 ${Math.abs(weekdayGap)}개 ${weekdayGap > 0 ? '많아요' : '적어요'}`}.
           </p> : <p>예측일이 정해지면 알려드려요.</p>}
         </div>
         <div className="factor-card">
           <span className="section-kicker">최근 판매 추세</span>
-          <p>{trendUp ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 늘었어요.` : trendDown ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 줄었어요.` : mean7 !== null ? `최근 7일 평균이 ${Math.round(mean7)}개로 평소와 비슷해요.` : '추세를 보려면 판매기록이 더 필요해요.'}</p>
+          <p>{narration ? narration.recent_trend : trendUp ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 늘었어요.` : trendDown ? `최근 7일 평균(${Math.round(mean7)}개)이 지난 4주 평균(${Math.round(mean28)}개)보다 ${trendDelta}개 줄었어요.` : mean7 !== null ? `최근 7일 평균이 ${Math.round(mean7)}개로 평소와 비슷해요.` : '추세를 보려면 판매기록이 더 필요해요.'}</p>
         </div>
         <div className="factor-card">
           <span className="section-kicker">주말 여부</span>
-          <p>{!targetDate ? '예측일이 정해지면 알려드려요.' : weekendAvg !== null && weekdayAvg !== null
-            ? (isWeekend
-              ? `내일은 주말이에요. 주말 평균(${Math.round(weekendAvg)}개)이 평일(${Math.round(weekdayAvg)}개)보다 많아서 반영했어요.`
-              : `내일은 평일이에요. 평일 평균(${Math.round(weekdayAvg)}개) 판매 패턴을 반영했어요.`)
-            : (isWeekend ? '내일은 주말이라 판매량이 늘어나는 경향을 반영했어요.' : '내일은 평일이라 평일 판매 패턴을 반영했어요.')}</p>
+          <p>{narration ? narration.weekend_note : weekendNote}</p>
         </div>
       </div>
     </section>

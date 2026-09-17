@@ -42,3 +42,7 @@ export function updateProduct(payload) {
 export function predictBacktest(payload) {
   return requestJson('/predict/backtest', 'POST', payload);
 }
+
+export function explainFactors(payload) {
+  return requestJson('/explain', 'POST', payload);
+}

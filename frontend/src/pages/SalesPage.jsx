@@ -22,6 +22,8 @@ export function SalesPage({ sales, setSales, product, onNavigate }) {
   const [importError, setImportError] = useState('');
   const [previewProduct, setPreviewProduct] = useState(null);
   const [fileError, setFileError] = useState('');
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editValue, setEditValue] = useState('');
 
   const finishParsing = (headers, rows, sourceLabel, mapping) => {
     const missing = unresolvedRequired(mapping).filter(role => role !== 'product');
@@ -116,9 +118,25 @@ export function SalesPage({ sales, setSales, product, onNavigate }) {
   };
 
   const previewOptions = [...new Set([productName, ...(groups ? Object.keys(groups) : [])])];
-  const previewRecords = (groups && previewProduct && previewProduct !== productName && groups[previewProduct]) ? groups[previewProduct] : sales;
+  const viewingOtherProduct = Boolean(groups && previewProduct && previewProduct !== productName && groups[previewProduct]);
+  const previewRecords = viewingOtherProduct ? groups[previewProduct] : sales;
+  const isEditable = !viewingOtherProduct;
   const average = Math.round(previewRecords.reduce((sum, row) => sum + Number(row.sold || 0), 0) / Math.max(previewRecords.length, 1));
   const max = previewRecords.length ? Math.max(...previewRecords.map(row => Number(row.sold || 0))) : 0;
+
+  const startEdit = (index, currentValue) => { setEditingIndex(index); setEditValue(String(currentValue)); };
+  const cancelEdit = () => { setEditingIndex(null); setEditValue(''); };
+  const commitEdit = index => {
+    const value = Number(editValue);
+    if (Number.isFinite(value) && value >= 0) {
+      setSales(sales.map((row, i) => (i === index ? { ...row, sold: Math.round(value) } : row)));
+    }
+    cancelEdit();
+  };
+  const deleteRecord = index => {
+    if (!window.confirm('이 판매기록 한 줄을 삭제할까요?')) return;
+    setSales(sales.filter((_, i) => i !== index));
+  };
 
   return <>
     <PageHeading page="sales"/>
@@ -182,7 +200,10 @@ export function SalesPage({ sales, setSales, product, onNavigate }) {
             ? <select value={previewProduct || productName} onChange={event => setPreviewProduct(event.target.value)}>{previewOptions.map(name => <option key={name} value={name}>{name}</option>)}</select>
             : <span>{previewRecords.length}일</span>}
         </div>
-        {previewRecords.length === 0 ? <p className="table-empty">판매기록이 없습니다. POS 파일을 업로드하거나 예시 데이터를 불러와주세요.</p> : <div className="data-table" role="table"><div className="table-row header" role="row"><span>날짜</span><span>요일</span><span>판매수량</span><span>구분</span></div>{previewRecords.map((row, index) => <div className="table-row" role="row" key={`${row.date}-${index}`}><span>{displayDate(row.date)}</span><span>{row.day}</span><strong>{row.sold}개</strong><span className="pill">{row.note}</span></div>)}</div>}
+        {isEditable && previewRecords.length > 0 && <p className="form-help">판매수량을 클릭하면 직접 고칠 수 있고, 잘못 들어온 줄은 지울 수 있습니다.</p>}
+        {previewRecords.length === 0 ? <p className="table-empty">판매기록이 없습니다. POS 파일을 업로드하거나 예시 데이터를 불러와주세요.</p> : <div className={`data-table${isEditable ? ' data-table-editable' : ''}`} role="table"><div className="table-row header" role="row"><span>날짜</span><span>요일</span><span>판매수량</span><span>구분</span>{isEditable && <span/>}</div>{previewRecords.map((row, index) => <div className="table-row" role="row" key={`${row.date}-${index}`}><span>{displayDate(row.date)}</span><span>{row.day}</span>{editingIndex === index
+            ? <input type="number" min="0" autoFocus className="row-edit-input" value={editValue} onChange={event => setEditValue(event.target.value)} onBlur={() => commitEdit(index)} onKeyDown={event => { if (event.key === 'Enter') commitEdit(index); if (event.key === 'Escape') cancelEdit(); }}/>
+            : <strong className={isEditable ? 'editable-value' : ''} onClick={() => isEditable && startEdit(index, row.sold)}>{row.sold}개</strong>}<span className="pill">{row.note}</span>{isEditable && <button className="row-delete" onClick={() => deleteRecord(index)} aria-label="이 기록 삭제">×</button>}</div>)}</div>}
       </article>
     </section>
   </>;
