@@ -1,8 +1,7 @@
 import React from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { Metric } from '../components/Metric.jsx';
-import { RiskBadge } from '../components/RiskBadge.jsx';
-import { wasteRisk, savings, formatWon } from '../utils/planning.js';
+import { savings, formatWon } from '../utils/planning.js';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
@@ -36,7 +35,6 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
   const baseline = product?.default_plan_quantity ?? 100;
   const predicted = prediction ? Math.round(prediction.predicted_sales) : null;
   const recommended = prediction ? prediction.recommended_quantity : null;
-  const risk = prediction ? wasteRisk(baseline, predicted) : null;
   const saved = prediction ? savings(baseline, recommended, product?.unit_cost) : null;
   const waste = prediction ? Math.max(0, recommended - predicted) : null;
   const greeting = greetingFor(new Date().getHours());
@@ -83,7 +81,6 @@ export function DashboardPage({ product, sales, prediction, predictionError, loa
           {prediction ? <>내일은 <strong>{recommended}개</strong> 생산을 추천해요.</> : loading ? '내일 생산량을 계산하고 있어요.' : (predictionError || '판매기록이 준비되면 추천을 보여드릴게요.')}
         </p>
       </div>
-      {risk && <RiskBadge level={risk.level}/>}
     </section>
 
     {prediction && <div className="plan-cta">
